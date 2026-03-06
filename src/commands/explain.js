@@ -52,7 +52,7 @@ const PAGES = [
           'If not, I stop playback and leave automatically. A new `Tiffany summon` is needed to bring me back.',
       },
     ],
-    footer: 'Page 1 of 8 — use ◀️ ▶️ to navigate',
+    footer: 'Page 1 of 8',
   },
 
   // ── Page 2: Discovering & queuing music ──────────────────────────────────
@@ -92,7 +92,7 @@ const PAGES = [
           '🗣️ _Voice: "I am in the mood for {style}"_',
       },
     ],
-    footer: 'Page 2 of 8 — use ◀️ ▶️ to navigate',
+    footer: 'Page 2 of 8',
   },
 
   // ── Page 3: Playback controls ─────────────────────────────────────────────
@@ -145,7 +145,7 @@ const PAGES = [
           '🗣️ _Voice: "previous", "back", or "go back"_',
       },
     ],
-    footer: 'Page 3 of 8 — use ◀️ ▶️ to navigate',
+    footer: 'Page 3 of 8',
   },
 
   // ── Page 4: Playlist management ──────────────────────────────────────────
@@ -195,7 +195,7 @@ const PAGES = [
           '🗣️ _Voice: "clear" or "clear playlist"_',
       },
     ],
-    footer: 'Page 4 of 8 — use ◀️ ▶️ to navigate',
+    footer: 'Page 4 of 8',
   },
 
   // ── Page 5: Volume ────────────────────────────────────────────────────────
@@ -240,7 +240,7 @@ const PAGES = [
           'restarts or rejoins a voice channel.',
       },
     ],
-    footer: 'Page 5 of 8 — use ◀️ ▶️ to navigate',
+    footer: 'Page 5 of 8',
   },
 
   // ── Page 6: Song Rating ───────────────────────────────────────────────────
@@ -276,7 +276,7 @@ const PAGES = [
           'The majority must agree for a song to be skipped.',
       },
     ],
-    footer: 'Page 6 of 8 — use ◀️ ▶️ to navigate',
+    footer: 'Page 6 of 8',
   },
 
   // ── Page 7: Personal Assistant ────────────────────────────────────────────
@@ -312,7 +312,7 @@ const PAGES = [
           '🗣️ _Voice: "poll should we play jazz"_',
       },
     ],
-    footer: 'Page 7 of 8 — use ◀️ ▶️ to navigate',
+    footer: 'Page 7 of 8',
   },
 
   // ── Page 8: Behind the scenes ─────────────────────────────────────────────
@@ -363,7 +363,7 @@ const PAGES = [
           'See `requirements.md` for the full deployment guide and all available environment variables.',
       },
     ],
-    footer: 'Page 8 of 8 — use ◀️ ▶️ to navigate',
+    footer: 'Page 8 of 8',
   },
 ];
 
@@ -371,8 +371,9 @@ const PAGES = [
 
 /**
  * Tiffany explain how you work
- * Displays a rich, paginated explanation of every command and how the bot
- * functions internally. Navigate pages with ◀️ ▶️ reactions.
+ * Displays a rich explanation of every command and how the bot functions
+ * internally. All 8 pages are sent as individual DMs in order (falls
+ * back to the channel if DMs are disabled).
  */
 module.exports = {
   name: 'explain',
@@ -381,8 +382,6 @@ module.exports = {
   voicePatterns: [/\bexplain(\s+how\s+(you\s+)?works?)?\b/i],
 
   async execute({ message }) {
-    let page = 0;
-
     const buildEmbed = (p) => {
       const def = PAGES[p];
       const embed = new EmbedBuilder()
@@ -406,7 +405,11 @@ module.exports = {
     }
 
     const target = dmChannel || message.channel;
-    const msg = await target.send({ embeds: [buildEmbed(page)] });
+
+    // Send all pages as individual messages in order
+    for (let i = 0; i < PAGES.length; i++) {
+      await target.send({ embeds: [buildEmbed(i)] });
+    }
 
     // Let the user know it was sent as a DM (only when DM succeeded)
     if (dmChannel && message.channel.id !== dmChannel.id) {
@@ -414,24 +417,5 @@ module.exports = {
         .send('📬 Check your DMs — I sent you a detailed explanation!')
         .catch(() => {});
     }
-
-    // Add navigation reactions
-    await msg.react('◀️').catch(() => {});
-    await msg.react('▶️').catch(() => {});
-
-    const collector = msg.createReactionCollector({
-      filter: (r, u) =>
-        ['◀️', '▶️'].includes(r.emoji.name) && u.id === message.author.id,
-      time: 120_000, // 2 minutes to read through all 6 pages
-    });
-
-    collector.on('collect', async (reaction, user) => {
-      reaction.users.remove(user).catch(() => {});
-      if (reaction.emoji.name === '▶️') page = Math.min(page + 1, PAGES.length - 1);
-      else page = Math.max(page - 1, 0);
-      await msg.edit({ embeds: [buildEmbed(page)] }).catch(() => {});
-    });
-
-    collector.on('end', () => msg.reactions.removeAll().catch(() => {}));
   },
 };
