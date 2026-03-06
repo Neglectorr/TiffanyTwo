@@ -212,7 +212,7 @@ Tiffany runs on the **Node.js App Runner** template inside AMP's **Generic Appli
    | Setting | Value |
    |---------|-------|
    | **App Download Type** | `Git repo` *(recommended)* or `None` *(manual upload)* |
-   | **App Download Source** | `https://github.com/WesleyPostmaPantheon/TiffanyTwo.git` *(only if Git repo chosen)* |
+   | **App Download Source** | `https://github.com/Neglectorr/TiffanyTwo.git` *(only if Git repo chosen)* |
    | **App Name** | `src/index.js` |
    | **App Installation Location** | *(leave blank)* |
    | **Node.js Release Stream** | `22 - LTS` (or newer; minimum 22.12.0 required) |
