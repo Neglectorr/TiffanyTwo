@@ -1,0 +1,52 @@
+# -------------------------------------------------------------------------
+# Tiffany Discord Bot – AMP Node.js App Runner reference settings
+#
+# This file documents how Tiffany is configured inside the AMP
+# "Node.js App Runner" template (Generic Application module, v2.6.0+).
+#
+# You do NOT import or place this file into AMP manually.
+# Configure these values in the AMP web UI under the instance's
+# Configuration → NodeJS App Runner section after creating the instance.
+#
+# File layout inside the AMP instance:
+#   Windows  →  <InstanceDir>\node-server\app\    (bot files go here)
+#   Linux    →  <InstanceDir>/node-server/app/    (bot files go here)
+#
+# Default instance directory:
+#   Windows  →  C:\AMPDatastore\Instances\<InstanceName>\
+#   Linux    →  /home/amp/.ampdata/instances/<InstanceName>/
+# -------------------------------------------------------------------------
+
+[App]
+# Name shown in the AMP instance list
+DisplayName=Tiffany Discord Bot
+
+# The Node.js script AMP passes to `node` at startup.
+# Corresponds to "App Name" in the Node.js App Runner configuration panel.
+ApplicationName=src/index.js
+
+# Leave blank – bot files are placed directly in the base app directory,
+# not in a subdirectory.  Corresponds to "App Installation Location".
+ApplicationLocation=
+
+# Node.js major release stream to install.
+# Corresponds to "Node.js Release Stream" (20 = LTS, minimum required: 18).
+NodeRelease=20
+
+# npm install mode run during "Update Server".
+# Corresponds to "npm Install Type".  Use "npmi" (npm i) for package.json.
+NpmInstallType=npmi
+
+# App Download Type: set to "GitRepo" to clone directly from GitHub,
+# or "None" to upload files manually via File Manager / SFTP.
+DownloadType=GitRepo
+
+# Repository URL used when DownloadType=GitRepo.
+DownloadSource=https://github.com/WesleyPostmaPantheon/TiffanyTwo.git
+
+# Exit method used by the Node.js App Runner template.
+ExitMethod=OS_CLOSE
+
+[Meta]
+Author=WesleyPostmaPantheon
+Template=Node.js App Runner (Generic Application module, AMP 2.6.0+)
