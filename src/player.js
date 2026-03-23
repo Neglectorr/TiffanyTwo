@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 const {
   createAudioPlayer,
   createAudioResource,
@@ -19,6 +20,7 @@ const playlist = require('./playlist');
 const tts = require('./tts');
 const logger = require('./logger');
 const config = require('./config');
+const { deleteBotMessages } = require('./utils');
 
 /**
  * @typedef {Object} GuildPlayerState
@@ -34,6 +36,8 @@ const guildStates = new Map();
 
 /** @type {Map<string, Promise<GuildPlayerState>>} Tracks in-progress join operations to prevent concurrent attempts */
 const joiningGuilds = new Map();
+const MS_PER_SECOND = 1000;
+const BEEP_FADE_SECONDS = 0.01;
 
 // ─── Voice Connection ───────────────────────────────────────────────────────
 
@@ -469,6 +473,7 @@ async function playCurrentSong(guildId) {
 
     if (state.textChannel) {
       const moodTag = state.moodMode ? ` *(mood: ${state.moodStyle})*` : '';
+      await deleteBotMessages(state.textChannel, { limit: 25 }).catch(() => {});
       await state.textChannel.send(
         `🎵 Now playing: **${song.title}** (${song.duration})${moodTag}`
       );
@@ -647,6 +652,81 @@ async function speak(guildId, text) {
   }
 }
 
+function createBeepWav({
+  durationMs = 140,
+  frequency = 880,
+  sampleRate = 48_000,
+  volume = 0.12,
+} = {}) {
+  const sampleCount = Math.max(1, Math.floor((sampleRate * durationMs) / MS_PER_SECOND));
+  const dataSize = sampleCount * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+
+  buffer.write('RIFF', 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write('WAVE', 8);
+  buffer.write('fmt ', 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write('data', 36);
+  buffer.writeUInt32LE(dataSize, 40);
+
+  const fadeSamples = Math.max(1, Math.floor(sampleRate * BEEP_FADE_SECONDS));
+  for (let i = 0; i < sampleCount; i++) {
+    const fadeIn = Math.min(1, i / fadeSamples);
+    const fadeOut = Math.min(1, (sampleCount - i) / fadeSamples);
+    const envelope = Math.min(fadeIn, fadeOut);
+    const sample = Math.round(
+      Math.sin((2 * Math.PI * frequency * i) / sampleRate) *
+      32767 *
+      volume *
+      envelope
+    );
+    buffer.writeInt16LE(sample, 44 + (i * 2));
+  }
+
+  return buffer;
+}
+
+async function playBeep(guildId) {
+  const state = guildStates.get(guildId);
+  if (!state) return;
+
+  const resource = createAudioResource(Readable.from(createBeepWav()), {
+    inputType: StreamType.Arbitrary,
+    inlineVolume: true,
+  });
+  resource.volume?.setVolume(Math.min(state.volume, 0.35));
+
+  const wasPlaying = state.player.state.status === AudioPlayerStatus.Playing;
+  const currentSong = state.moodMode
+    ? state.moodQueue[state.moodIndex]
+    : playlist.current;
+
+  state.ttsActive = true;
+  state.player.play(resource);
+
+  const cleanup = () => {
+    state.ttsActive = false;
+    if (!wasPlaying || !currentSong) return;
+    const stillCurrent = state.moodMode
+      ? state.moodQueue[state.moodIndex]?.id === currentSong.id
+      : playlist.current?.id === currentSong.id;
+    if (stillCurrent) {
+      playCurrentSong(guildId).catch((err) =>
+        logger.error(`Wake-word beep resume failed for guild ${guildId}`, err)
+      );
+    }
+  };
+
+  state.player.once(AudioPlayerStatus.Idle, cleanup);
+}
+
 // ─── Mood mode ─────────────────────────────────────────────────────────────
 
 /**
@@ -762,6 +842,7 @@ module.exports = {
   previous,
   setVolume,
   speak,
+  playBeep,
   startMoodMode,
   exitMoodMode,
 };

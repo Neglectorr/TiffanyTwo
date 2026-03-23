@@ -79,17 +79,19 @@ const PAGES = [
           'add just the video or the whole playlist.\n' +
           '⚠️ _Text only — vocal URL spelling is not supported._',
       },
-      {
-        name: '🎶 `Tiffany i am in the mood for {style}`',
-        value:
-          'Searches YouTube for **playlists** matching your chosen style (e.g. "jazz", "lo-fi beats", ' +
-          '"80s rock"). Up to 3 playlists are shown; pick one with reactions.\n' +
-          'This starts a **temporary mood queue** that plays independently of your persistent playlist — ' +
-          'nothing is added or removed from your saved list.\n' +
-          'When the mood playlist ends, the bot asks:\n' +
-          '🔄 — Search for another {style} playlist\n' +
-          '▶️ — Return to the regular playlist\n' +
-          '🗣️ _Voice: "I am in the mood for {style}"_',
+        {
+          name: '🎶 `Tiffany i am in the mood for {style}` · `Tiffany vibe {style}`',
+          value:
+            'Searches YouTube for **playlists** matching your chosen style (e.g. "jazz", "lo-fi beats", ' +
+            '"80s rock"). Up to 3 playlists are shown; pick one with reactions. If no playlist is found, ' +
+            'Tiffany falls back to a temporary vibe mix built from YouTube search results.\n' +
+            'This starts a **temporary mood queue** that plays independently of your persistent playlist — ' +
+            'nothing is added or removed from your saved list.\n' +
+            'When the mood playlist ends, the bot asks:\n' +
+            '🔄 — Search for another {style} playlist\n' +
+            '▶️ — Return to the regular playlist\n' +
+            '🗣️ _Voice: "I am in the mood for {style}" or "vibe {style}"_\n' +
+            'While a mood track is playing, say **"save track"** to store that song in the regular playlist.',
       },
     ],
     footer: 'Page 2 of 8',
