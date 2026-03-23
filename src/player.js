@@ -36,6 +36,8 @@ const guildStates = new Map();
 
 /** @type {Map<string, Promise<GuildPlayerState>>} Tracks in-progress join operations to prevent concurrent attempts */
 const joiningGuilds = new Map();
+const MS_PER_SECOND = 1000;
+const BEEP_FADE_SECONDS = 0.01;
 
 // ─── Voice Connection ───────────────────────────────────────────────────────
 
@@ -656,7 +658,7 @@ function createBeepWav({
   sampleRate = 48_000,
   volume = 0.12,
 } = {}) {
-  const sampleCount = Math.max(1, Math.floor((sampleRate * durationMs) / 1000));
+  const sampleCount = Math.max(1, Math.floor((sampleRate * durationMs) / MS_PER_SECOND));
   const dataSize = sampleCount * 2;
   const buffer = Buffer.alloc(44 + dataSize);
 
@@ -674,7 +676,7 @@ function createBeepWav({
   buffer.write('data', 36);
   buffer.writeUInt32LE(dataSize, 40);
 
-  const fadeSamples = Math.max(1, Math.floor(sampleRate * 0.01));
+  const fadeSamples = Math.max(1, Math.floor(sampleRate * BEEP_FADE_SECONDS));
   for (let i = 0; i < sampleCount; i++) {
     const fadeIn = Math.min(1, i / fadeSamples);
     const fadeOut = Math.min(1, (sampleCount - i) / fadeSamples);

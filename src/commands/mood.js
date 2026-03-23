@@ -53,7 +53,7 @@ module.exports = {
  * @param {string|null} requesterId  Discord user ID for reaction filter (null = any user)
  */
 async function runMoodSearch(style, guildId, textChannel, voiceChannel, requesterId) {
-  let playlists = [];
+  let playlists;
   try {
     playlists = await play.search(`${style} music playlist`, {
       source: { youtube: 'playlist' },

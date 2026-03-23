@@ -8,6 +8,7 @@ const { handleMessage } = require('./commandHandler');
 const { handleSpeech, extractAfterWakeWord } = require('./voiceHandler');
 const player = require('./player');
 const SpeechRecognizer = require('./speechRecognizer');
+const { deleteAfter } = require('./utils');
 
 // Log the @discordjs/voice dependency report at startup so missing native
 // libraries (opus, encryption, FFmpeg, DAVE) are immediately visible.
@@ -58,7 +59,6 @@ client.once('clientReady', () => {
 client.on('messageCreate', async (message) => {
   try {
     if (message.author?.id === client.user?.id && message.guild) {
-      const { deleteAfter } = require('./utils');
       deleteAfter(message);
       return;
     }
@@ -165,6 +165,9 @@ speechRecognizer.on('speech', async ({ content, author, channel, userId, confide
 
   // Optionally respond via TTS if addressed as "Tiffany"
   const lower = content.toLowerCase();
+  // extractAfterWakeWord() returns null when the transcript is not a wake-word
+  // phrase, and '' / command text when it is. Only use the spoken greeting for
+  // direct "Tiffany …" speech, not the wake-word flow which now uses a beep.
   if (lower.includes(config.prefix) && extractAfterWakeWord(lower) === null) {
     const guildId = channel.guild.id;
     const state = player.getState(guildId);
