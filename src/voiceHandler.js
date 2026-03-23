@@ -3,6 +3,7 @@
 const logger = require('./logger');
 const config = require('./config');
 const { handleVoiceChoice, COMMANDS } = require('./commandHandler');
+const player = require('./player');
 
 // ─── Wake word patterns ────────────────────────────────────────────────────
 // Matches "hey tiffany", "hi tiffany", "yo tiffany" etc. as wake word prefix.
@@ -77,6 +78,9 @@ async function handleSpeech(message, transcript) {
       // Just the wake word alone — remember it for the next utterance
       if (userId) wakeWordTimestamps.set(userId, Date.now());
       logger.info(`Wake word detected from ${message.author?.username} — awaiting command.`);
+      await player.playBeep(guildId).catch((err) =>
+        logger.warn(`Wake-word beep failed in guild ${guildId}: ${err.message}`)
+      );
     }
     return;
   }
@@ -137,4 +141,4 @@ async function dispatchVoiceCommand(message, guildId, body) {
   }
 }
 
-module.exports = { handleSpeech };
+module.exports = { handleSpeech, extractAfterWakeWord };
