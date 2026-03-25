@@ -5,10 +5,9 @@ const { generateDependencyReport } = require('@discordjs/voice');
 const logger = require('./logger');
 const config = require('./config');
 const { handleMessage } = require('./commandHandler');
-const { handleSpeech, extractAfterWakeWord } = require('./voiceHandler');
+const { handleSpeech } = require('./voiceHandler');
 const player = require('./player');
 const SpeechRecognizer = require('./speechRecognizer');
-const { deleteAfter } = require('./utils');
 
 // Log the @discordjs/voice dependency report at startup so missing native
 // libraries (opus, encryption, FFmpeg, DAVE) are immediately visible.
@@ -24,9 +23,14 @@ if (depReport.includes('@snazzah/davey: not found')) {
   );
 }
 
+// Audio receive (listening to users) is currently broken in @discordjs/voice
+// 0.19.x with DAVE enabled. Speech recognition via Vosk will be unavailable
+// until this upstream issue is resolved.
+// See: https://github.com/discordjs/discord.js/issues/11419
 logger.info(
-  'Voice receive support is enabled with DAVE-compatible @discordjs/voice builds. ' +
-  'If voice commands fail, check the dependency report above for encryption/runtime issues.'
+  'Note: Audio receive (voice recognition) is degraded with DAVE E2EE in ' +
+  '@discordjs/voice 0.19.x. Voice commands via Vosk may not work until the ' +
+  'upstream issue is fixed. Text commands are unaffected.'
 );
 
 // ─── Discord Client ────────────────────────────────────────────────────────
@@ -58,10 +62,6 @@ client.once('clientReady', () => {
 
 client.on('messageCreate', async (message) => {
   try {
-    if (message.author?.id === client.user?.id && message.guild) {
-      deleteAfter(message);
-      return;
-    }
     await handleMessage(message);
   } catch (err) {
     logger.error('Unhandled error in messageCreate', err);
@@ -165,10 +165,7 @@ speechRecognizer.on('speech', async ({ content, author, channel, userId, confide
 
   // Optionally respond via TTS if addressed as "Tiffany"
   const lower = content.toLowerCase();
-  // extractAfterWakeWord() returns null when the transcript is not a wake-word
-  // phrase, and '' / command text when it is. Only use the spoken greeting for
-  // direct "Tiffany …" speech, not the wake-word flow which now uses a beep.
-  if (lower.includes(config.prefix) && extractAfterWakeWord(lower) === null) {
+  if (lower.includes(config.prefix)) {
     const guildId = channel.guild.id;
     const state = player.getState(guildId);
     if (state) {
