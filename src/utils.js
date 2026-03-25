@@ -19,33 +19,4 @@ function deleteAfter(msg, delay) {
   return () => clearTimeout(timer);
 }
 
-/**
- * Delete recent messages sent by Tiffany in a channel.
- *
- * @param {import('discord.js').TextBasedChannel|null|undefined} channel
- * @param {{ limit?: number }} [options]
- * @returns {Promise<number>}
- */
-async function deleteBotMessages(channel, options = {}) {
-  if (!channel?.messages?.fetch) return 0;
-
-  const limit = Math.min(Math.max(options.limit || 25, 1), 100);
-  const botId = channel.client?.user?.id;
-  if (!botId) return 0;
-
-  const messages = await channel.messages.fetch({ limit }).catch(() => null);
-  if (!messages?.size) return 0;
-
-  const botMessages = messages.filter((msg) => msg.author?.id === botId);
-  let deleted = 0;
-
-  for (const [, msg] of botMessages) {
-    await msg.delete().then(() => {
-      deleted++;
-    }).catch(() => {});
-  }
-
-  return deleted;
-}
-
-module.exports = { deleteAfter, deleteBotMessages };
+module.exports = { deleteAfter };

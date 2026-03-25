@@ -20,12 +20,8 @@ const NUMBER_EMOJIS = ['1️⃣', '2️⃣', '3️⃣'];
  */
 module.exports = {
   name: 'mood',
-  patterns: [
-    /^(?:i(?:'m| am) in the mood for|mood|vibe|set the vibe to)\s+(.+)$/i,
-  ],
-  voicePatterns: [
-    /\b(?:i(?:'m| am) in the mood for|mood|vibe|set the vibe to)\s+(.+)/i,
-  ],
+  patterns: [/^i(?:'m| am) in the mood for (.+)$/i],
+  voicePatterns: [/\bi(?:'m| am) in the mood for (.+)/i],
 
   async execute({ message, guildId, match }) {
     const style = match[1].trim();
@@ -60,89 +56,53 @@ async function runMoodSearch(style, guildId, textChannel, voiceChannel, requeste
       limit: 3,
     });
   } catch (err) {
-    logger.warn(`Mood playlist search failed for "${style}", trying fallback mix search: ${err.message}`);
-  }
-
-  if (playlists && playlists.length > 0) {
-    const embed = buildPlaylistEmbed(style, playlists);
-    const msg = await textChannel.send({ embeds: [embed] });
-
-    const reactionCount = Math.min(playlists.length, NUMBER_EMOJIS.length);
-    for (let i = 0; i < reactionCount; i++) {
-      await msg.react(NUMBER_EMOJIS[i]).catch(() => {});
-    }
-
-    const filter = (r, u) =>
-      NUMBER_EMOJIS.slice(0, playlists.length).includes(r.emoji.name) &&
-      !u.bot &&
-      (!requesterId || u.id === requesterId);
-
-    const collector = msg.createReactionCollector({
-      filter,
-      max: 1,
-      time: config.messageDeleteDelay,
-    });
-
-    const cancelDelete = deleteAfter(msg);
-
-    collector.on('collect', async (reaction) => {
-      cancelDelete();
-      msg.delete().catch(() => {});
-      const index = NUMBER_EMOJIS.indexOf(reaction.emoji.name);
-      await loadAndPlay(playlists[index], style, guildId, textChannel, voiceChannel);
-    });
-
-    collector.on('end', (collected) => {
-      if (collected.size === 0) {
-        msg.delete().catch(() => {});
-        textChannel
-          .send('⏰ No response – mood mode cancelled.')
-          .then((m) => deleteAfter(m))
-          .catch(() => {});
-      }
-    });
-    return;
-  }
-
-  let videos;
-  try {
-    videos = await play.search(`${style} music mix`, {
-      source: { youtube: 'video' },
-      limit: 10,
-    });
-  } catch (err) {
-    logger.error(`Mood fallback search failed for "${style}"`, err);
+    logger.error(`Mood search failed for "${style}"`, err);
     return textChannel.send('❌ YouTube search failed. Please try again later.');
   }
 
-  const songs = (videos || [])
-    .filter((video) => video?.id && video?.url)
-    .map((video) => ({
-      id: video.id,
-      url: video.url,
-      title: video.title || 'Unknown title',
-      duration: formatDuration(video.durationInSec),
-    }));
-
-  if (songs.length === 0) {
+  if (!playlists || playlists.length === 0) {
     return textChannel.send(
-      `No playlists or tracks found for **${style}**. Try a different style.`
+      `No playlists found for **${style}**. Try a different style.`
     );
   }
 
-  if (voiceChannel && !player.getState(guildId)) {
-    await player.join(voiceChannel, textChannel);
+  const embed = buildPlaylistEmbed(style, playlists);
+  const msg = await textChannel.send({ embeds: [embed] });
+
+  const reactionCount = Math.min(playlists.length, NUMBER_EMOJIS.length);
+  for (let i = 0; i < reactionCount; i++) {
+    await msg.react(NUMBER_EMOJIS[i]).catch(() => {});
   }
 
-  const onMoodEnd = buildMoodEndCallback(style, guildId, textChannel, voiceChannel);
-  player.startMoodMode(guildId, songs, style, onMoodEnd);
+  const filter = (r, u) =>
+    NUMBER_EMOJIS.slice(0, playlists.length).includes(r.emoji.name) &&
+    !u.bot &&
+    (!requesterId || u.id === requesterId);
 
-  await textChannel.send(
-    `🎶 I couldn't find a playlist for **${style}**, so I started a vibe mix from YouTube search results (${songs.length} tracks).`
-  );
-  logger.info(
-    `Mood fallback started in guild ${guildId}: style="${style}", songs=${songs.length}`
-  );
+  const collector = msg.createReactionCollector({
+    filter,
+    max: 1,
+    time: config.messageDeleteDelay,
+  });
+
+  const cancelDelete = deleteAfter(msg);
+
+  collector.on('collect', async (reaction, user) => {
+    cancelDelete();
+    msg.delete().catch(() => {});
+    const index = NUMBER_EMOJIS.indexOf(reaction.emoji.name);
+    await loadAndPlay(playlists[index], style, guildId, textChannel, voiceChannel);
+  });
+
+  collector.on('end', (collected) => {
+    if (collected.size === 0) {
+      msg.delete().catch(() => {});
+      textChannel
+        .send('⏰ No response – mood mode cancelled.')
+        .then((m) => deleteAfter(m))
+        .catch(() => {});
+    }
+  });
 }
 
 /**
