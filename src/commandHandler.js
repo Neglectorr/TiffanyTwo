@@ -28,12 +28,13 @@ const remind = require('./commands/remind');
 const dice = require('./commands/dice');
 const poll = require('./commands/poll');
 const rate = require('./commands/rate');
+const saveTrack = require('./commands/saveTrack');
 
 /** All registered commands in priority order */
 const COMMANDS = [
   summon, find, mood, play, pause, resume, stop,
   skip, previous, remove, nowplaying, queue, shuffle, clear, leave, volume,
-  remind, dice, poll, rate, clean, help, explain,
+  remind, dice, poll, rate, saveTrack, clean, help, explain,
 ];
 
 // ─── Text command dispatch ──────────────────────────────────────────────────

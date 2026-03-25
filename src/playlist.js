@@ -85,11 +85,17 @@ class Playlist {
   // ─── Mutations ─────────────────────────────────────────────────────────────
 
   /**
-   * Add a song to the end of the playlist.
+   * Add a song to play next in the playlist.
    * @param {Omit<Song, 'addedAt'>} song
    */
   add(song) {
-    this.songs.push({ ...song, addedAt: new Date().toISOString() });
+    const songWithTimestamp = { ...song, addedAt: new Date().toISOString() };
+    if (this.songs.length === 0) {
+      this.songs.push(songWithTimestamp);
+    } else {
+      const insertAt = Math.min(this.currentIndex + 1, this.songs.length);
+      this.songs.splice(insertAt, 0, songWithTimestamp);
+    }
     this._save();
   }
 
