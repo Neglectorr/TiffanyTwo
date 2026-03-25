@@ -32,7 +32,7 @@ module.exports = {
           value: [
             '`Tiffany find {song name}` — Search YouTube; pick a result with reactions (1️⃣–5️⃣) or voice _"I choose {number}"_',
             '`Tiffany play {youtube url}` — Queue a specific video or playlist (asks before adding full playlist)',
-            '`Tiffany i am in the mood for {style}` — Temporary mood playlist from YouTube; on end choose 🔄 another or ▶️ resume',
+            '`Tiffany i am in the mood for {style}` / `Tiffany vibe {style}` — Temporary mood playlist or fallback vibe mix; on end choose 🔄 another or ▶️ resume',
           ].join('\n'),
         },
         {
@@ -54,6 +54,7 @@ module.exports = {
             '`Tiffany shuffle` — Shuffle the persistent playlist immediately',
             '`Tiffany remove current song` — Remove the current song and skip',
             '`Tiffany clear playlist` — Remove all songs (asks for confirmation)',
+            '`Tiffany save track` — Save the current vibe/mood song into the regular playlist',
           ].join('\n'),
         },
         {
