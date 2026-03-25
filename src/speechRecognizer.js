@@ -171,6 +171,7 @@ class SpeechRecognizer extends EventEmitter {
     receiver.speaking.on('start', (userId) => {
       const user = this._client.users.cache.get(userId);
       if (!user || user.bot) return;
+      logger.info(`Receiving audio from ${user.username} (${userId}) in guild ${guild.name}`);
 
       // Subscribe to this user's Opus audio stream; end after 1 s of silence
       const opusStream = receiver.subscribe(userId, {
@@ -191,7 +192,10 @@ class SpeechRecognizer extends EventEmitter {
 
       decoder.on('end', () => {
         const rawPcm = Buffer.concat(chunks);
-        if (rawPcm.length < MIN_PCM_BYTES) return; // too short to be meaningful
+        if (rawPcm.length < MIN_PCM_BYTES) {
+          logger.info(`Audio from ${user?.username} too short to recognize (${rawPcm.length} bytes < ${MIN_PCM_BYTES} minimum).`);
+          return;
+        }
 
         const vosk = getVosk();
         const model = getModel();
