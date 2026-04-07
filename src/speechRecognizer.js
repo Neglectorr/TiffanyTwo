@@ -222,6 +222,15 @@ class SpeechRecognizer extends EventEmitter {
             confidence = totalConf / voskResult.result.length;
           }
 
+          // Always log the raw recognition result so every utterance is visible
+          // in the console regardless of confidence level – useful for tuning
+          // CONFIDENCE_THRESHOLD and verifying that audio receive is working.
+          if (text) {
+            logger.info(`[STT] ${user?.username}: "${text}" – conf ${(confidence * 100).toFixed(0)}%`);
+          } else {
+            logger.info(`[STT] ${user?.username}: (no speech recognized)`);
+          }
+
           if (text && confidence >= CONFIDENCE_THRESHOLD) {
             // Resolve the channel: prefer the voice channel the speaker is in,
             // fall back to the first text channel in the guild.
