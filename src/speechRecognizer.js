@@ -45,15 +45,19 @@ const MODEL_PATH = path.join(config.dataDir, 'vosk-model-small-en-us-0.15');
 // ─── Lazy-loaded singletons ──────────────────────────────────────────────────
 
 let voskLib = null;
+let voskUnavailable = false;
 let voskModel = null;
+let voskModelMissing = false;
 
 function getVosk() {
   if (voskLib) return voskLib;
+  if (voskUnavailable) return null;
   try {
     voskLib = require('vosk');
     voskLib.setLogLevel(-1);
     return voskLib;
   } catch (err) {
+    voskUnavailable = true;
     logger.warn(`Vosk library unavailable – voice input disabled: ${err.message}`);
     return null;
   }
@@ -64,11 +68,14 @@ function getModel() {
   const vosk = getVosk();
   if (!vosk) return null;
   if (!fs.existsSync(MODEL_PATH)) {
-    logger.warn(
-      `Vosk model not found at ${MODEL_PATH}. ` +
-        'Run "node scripts/download-model.js" to install it. ' +
-        'Voice recognition is disabled until the model is present.'
-    );
+    if (!voskModelMissing) {
+      voskModelMissing = true;
+      logger.warn(
+        `Vosk model not found at ${MODEL_PATH}. ` +
+          'Run "node scripts/download-model.js" to install it. ' +
+          'Voice recognition is disabled until the model is present.'
+      );
+    }
     return null;
   }
   try {
