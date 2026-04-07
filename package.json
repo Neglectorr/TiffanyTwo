@@ -4,6 +4,7 @@
   "description": "Tiffany - A modern Discord music bot with voice control and persistent playlists",
   "main": "src/index.js",
   "scripts": {
+    "preinstall": "node scripts/ensure-windows-sdk.js",
     "start": "node src/index.js"
   },
   "engines": {
@@ -18,9 +19,7 @@
     "libsodium-wrappers": "^0.7.13",
     "opusscript": "^0.0.8",
     "play-dl": "^1.9.7",
-    "say": "^0.16.0"
-  },
-  "optionalDependencies": {
+    "say": "^0.16.0",
     "vosk": "^0.3.39"
   },
   "overrides": {
