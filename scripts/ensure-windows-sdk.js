@@ -2,11 +2,13 @@
 'use strict';
 
 /**
- * Ensures the Windows 10/11 SDK is installed before native addons (ffi-napi,
- * vosk, etc.) are compiled by node-gyp.
+ * Ensures the Windows 10/11 SDK is installed before native addons (vosk, etc.)
+ * are compiled by node-gyp.
  *
- * Run automatically via the npm "preinstall" hook – on non-Windows platforms
- * this script exits immediately without doing anything.
+ * Run manually if you encounter Windows SDK-related build errors:
+ *   node scripts/ensure-windows-sdk.js
+ *
+ * On non-Windows platforms this script exits immediately without doing anything.
  *
  * Detection: checks for Windows Kits header files under
  *   C:\Program Files (x86)\Windows Kits\10\Include\<version>\um\windows.h
@@ -18,8 +20,7 @@
  *   3. Chocolatey – installs windows-sdk-10-version-2004-all silently.
  *
  * If all three strategies fail the script prints clear manual instructions
- * and exits with code 1 so that npm install stops rather than failing
- * silently later during native-addon compilation.
+ * and exits with code 1.
  */
 
 // ─── Non-Windows fast-exit ───────────────────────────────────────────────────
@@ -197,7 +198,7 @@ if (hasWindowsSDK()) {
 
 console.log('');
 console.log('⚠️  Windows SDK not found.');
-console.log('    node-gyp requires the Windows SDK to compile native addons (ffi-napi, vosk…).');
+console.log('    node-gyp requires the Windows SDK to compile native addons (vosk…).');
 console.log('    Attempting automatic installation…');
 console.log('');
 
@@ -218,7 +219,7 @@ for (const [name, fn] of strategies) {
 
   if (success) {
     console.log('');
-    console.log('✅  Windows SDK installed successfully. Continuing with npm install…');
+    console.log('✅  Windows SDK installed successfully.');
     console.log('');
     process.exit(0);
   }
