@@ -168,9 +168,19 @@ class SpeechRecognizer extends EventEmitter {
 
     const { receiver } = connection;
 
+    /** @type {Set<string>} userIds with an active decode pipeline in this guild */
+    const activeUsers = new Set();
+
     receiver.speaking.on('start', (userId) => {
       const user = this._client.users.cache.get(userId);
       if (!user || user.bot) return;
+
+      // Prevent a second pipeline from being created while the first is still
+      // draining — avoids feeding concurrent Opus frames into separate decoders
+      // which triggers "memory access out of bounds" in libopus.
+      if (activeUsers.has(userId)) return;
+      activeUsers.add(userId);
+
       logger.info(`Receiving audio from ${user.username} (${userId}) in guild ${guild.name}`);
 
       // Subscribe to this user's Opus audio stream; end after 1 s of silence
@@ -186,11 +196,23 @@ class SpeechRecognizer extends EventEmitter {
       });
 
       const chunks = [];
+      let pipelineTornDown = false;
+
+      const tearDownPipeline = () => {
+        if (pipelineTornDown) return;
+        pipelineTornDown = true;
+        activeUsers.delete(userId);
+        opusStream.unpipe(decoder);
+        decoder.destroy();
+        opusStream.destroy();
+      };
+
       opusStream.pipe(decoder);
 
       decoder.on('data', (chunk) => chunks.push(chunk));
 
       decoder.on('end', () => {
+        activeUsers.delete(userId);
         const rawPcm = Buffer.concat(chunks);
         if (rawPcm.length < MIN_PCM_BYTES) {
           logger.info(`Audio from ${user?.username} too short to recognize (${rawPcm.length} bytes < ${MIN_PCM_BYTES} minimum).`);
@@ -252,9 +274,17 @@ class SpeechRecognizer extends EventEmitter {
         }
       });
 
-      // Log stream teardown errors at warn level but don't crash
-      decoder.on('error', (err) => logger.warn(`Opus decoder error for user ${userId}: ${err.message}`));
-      opusStream.on('error', (err) => logger.warn(`Opus receive stream error for user ${userId}: ${err.message}`));
+      // On decoder/stream error: tear down the whole pipeline exactly once and
+      // release the user slot so the next speech start can create a fresh decoder.
+      decoder.on('error', (err) => {
+        logger.warn(`Opus decoder error for user ${userId}: ${err.message}`);
+        tearDownPipeline();
+      });
+
+      opusStream.on('error', (err) => {
+        logger.warn(`Opus receive stream error for user ${userId}: ${err.message}`);
+        tearDownPipeline();
+      });
     });
   }
 }
