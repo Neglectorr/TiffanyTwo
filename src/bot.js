@@ -93,22 +93,17 @@ function isBotAlone(guild) {
 }
 
 // Register the speech recognizer whenever the bot joins a voice channel so
-// it can listen to users speaking.  We use voiceStateUpdate rather than
-// hooking into player.join() directly to keep the modules decoupled.
-//
-// Also handles the sleep timer for empty voice channels.
-client.on('voiceStateUpdate', (oldState, newState) => {
-  // ── Register speech recognizer when bot joins ────────────────────────────
-  if (newState.member?.id === client.user?.id && newState.channelId) {
-    const guildId = newState.guild.id;
-    const state = player.getState(guildId);
-    if (state?.connection) {
-      speechRecognizer.registerConnection(state.connection, newState.guild);
-    }
-  }
+// it can listen to users speaking.  Wired to the player 'joined' event rather
+// than voiceStateUpdate because voiceStateUpdate fires before player.getState()
+// is populated – the race condition caused registerConnection to silently no-op
+// on every first join, meaning no audio was ever received.
+player.on('joined', ({ connection, guild }) => {
+  speechRecognizer.registerConnection(connection, guild);
+});
 
-  // ── Sleep timer logic ────────────────────────────────────────────────────
-  // Trigger on any voice state change in guilds where the bot is connected
+// ── Sleep timer: leave when voice channel is empty ────────────────────────
+// Trigger on any voice state change in guilds where the bot is connected
+client.on('voiceStateUpdate', (oldState, newState) => {
   const guild = newState.guild || oldState.guild;
   if (!guild) return;
   const guildId = guild.id;

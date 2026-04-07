@@ -1,5 +1,6 @@
 'use strict';
 
+const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
 const { Readable } = require('stream');
@@ -36,6 +37,10 @@ const guildStates = new Map();
 
 /** @type {Map<string, Promise<GuildPlayerState>>} Tracks in-progress join operations to prevent concurrent attempts */
 const joiningGuilds = new Map();
+
+/** Module-level event emitter so callers can react to player lifecycle events */
+const playerEmitter = new EventEmitter();
+
 const MS_PER_SECOND = 1000;
 const BEEP_FADE_SECONDS = 0.01;
 
@@ -220,6 +225,11 @@ async function _joinImpl(voiceChannel, textChannel) {
   state.player.on('songUnavailable', state._songUnavailableListener);
 
   guildStates.set(guildId, state);
+
+  // Notify listeners (e.g. the speech recognizer) that a new voice connection
+  // is ready.  This fires after the state is fully registered so that
+  // getState(guildId) is guaranteed to return a valid state in the handler.
+  playerEmitter.emit('joined', { connection, guild: voiceChannel.guild });
 
   // ── Player lifecycle ──────────────────────────────────────────────────────
 
@@ -845,4 +855,6 @@ module.exports = {
   playBeep,
   startMoodMode,
   exitMoodMode,
+  on: playerEmitter.on.bind(playerEmitter),
+  off: playerEmitter.off.bind(playerEmitter),
 };
