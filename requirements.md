@@ -18,7 +18,7 @@
 | `@discordjs/voice` | 0.19.0 | Discord voice channel support – joining channels, creating audio players, streaming audio resources. Supports the DAVE E2EE protocol required by Discord for voice connections. |
 | `@snazzah/davey` | 0.1.10 | DAVE (Discord Audio/Visual Encryption) protocol library. Required by `@discordjs/voice` 0.19.0 – Discord enforces DAVE E2EE on most voice channels and connections will fail without it. |
 | `play-dl` | ^1.9.7 | YouTube/SoundCloud/Spotify search (no API key required). Used for non-YouTube audio sources; acts as fallback when yt-dlp is unavailable. |
-| `vosk` | ^0.3.39 | Offline, free speech-to-text engine. Processes audio entirely on the host machine — no external API, no cost. Requires a one-time model download (see *Setting Up Voice Recognition* below). **Note:** currently degraded due to DAVE audio receive limitations – see *Known Limitations*. |
+| `@xenova/transformers` | ^2.17.2 | Offline, free speech-to-text engine powered by OpenAI Whisper. Runs the `whisper-small.en` model entirely in JavaScript/WASM on the host machine — no native compilation, no external API, no ongoing cost. The model (~150 MB) is downloaded automatically on first use and cached locally. |
 | `say` | ^0.16.0 | Cross-platform text-to-speech. Uses Windows SAPI (`Microsoft Zira Desktop` etc.) on Windows, `say` on macOS, and `espeak`/`festival` on Linux. Replaces the PowerShell TTS script. |
 | `ffmpeg-static` | ^5.2.0 | Bundles a pre-built FFmpeg binary used by `@discordjs/voice` for transcoding non-WebM audio sources. YouTube audio is streamed as WebM/Opus and demuxed without FFmpeg; this package covers fallback scenarios (e.g. certain SoundCloud tracks via play-dl). On ARM Linux install system `ffmpeg` instead (`sudo apt-get install ffmpeg`). |
 | `opusscript` | ^0.0.8 | Pure-JavaScript Opus audio codec required by `@discordjs/voice` to encode audio for Discord. Used instead of `@discordjs/opus` (which has an unpatched DoS vulnerability). |
@@ -102,7 +102,7 @@ Each speaker's audio is tracked individually. When multiple people are in a voic
 
 ### Confidence Thresholds
 
-Voice commands are only acted upon if Vosk's word-level confidence score averages at least **45%**. Low-confidence transcripts (background noise, music bleed-through, mumbled speech) are logged but ignored. This reduces false command triggers.
+Whisper's transcription quality is high enough that a numeric confidence threshold is not applied. Short or silent recordings are filtered by the minimum audio duration check (0.1 s) before being sent to the model. Every recognised utterance is logged to the console so you can verify audio receive is working.
 
 ### Sleep Timer (Empty Voice Channel)
 
@@ -301,9 +301,9 @@ MESSAGE_DELETE_DELAY=20000
 
 > **Windows note:** On Windows, the TTS voice name must exactly match a voice installed via **Control Panel → Speech**. Common choices are `Microsoft Zira Desktop` (female) and `Microsoft David Desktop` (male). If you are unsure which voices are available, leave `TTS_VOICE` blank to use the system default.
 
-#### 6. (Optional) Download the Vosk Speech Model
+#### 6. (Optional) Pre-download the Whisper Speech Model
 
-If you want voice command support, download the offline Vosk model before starting the bot.
+Voice recognition uses the Whisper `whisper-small.en` model via `@xenova/transformers`. The model downloads automatically (~150 MB) the first time the bot tries to recognise speech, so this step is optional — but running it in advance avoids a delay on first use.
 
 Open the AMP **Console** for this instance and run:
 
@@ -311,7 +311,7 @@ Open the AMP **Console** for this instance and run:
 node scripts/download-model.js
 ```
 
-This downloads and extracts the ~45 MB model to `data/vosk-model-small-en-us-0.15/` inside the app directory. It is a one-time operation. Voice commands are silently disabled if the model is absent; text commands always work regardless.
+This downloads and caches the model to `data/transformers-cache/` inside the app directory. It is a one-time operation. Voice commands work as soon as the model is cached; text commands always work regardless.
 
 > **Windows AMP note:** The AMP console accepts commands that are passed to the running process. If the bot is not running yet you can use AMP's **File Manager** to open a terminal, or open a Command Prompt / PowerShell window, navigate to the app directory (`C:\AMPDatastore\Instances\<InstanceName>\node-server\app\`) and run the command there with the bundled Node.js:
 >
@@ -415,9 +415,9 @@ module.exports = {
 
 ## Setting Up Voice Recognition
 
-Tiffany uses [Vosk](https://alphacephei.com/vosk/) for fully offline speech recognition — no Google, no external API, no ongoing cost.
+Tiffany uses [OpenAI Whisper](https://github.com/openai/whisper) via [`@xenova/transformers`](https://github.com/xenova/transformers.js) for fully offline speech recognition — no Google, no external API, no ongoing cost. The model runs entirely in JavaScript/WASM and requires no native compilation.
 
-Before starting the bot for the first time (or after a fresh install), download the small English model (~45 MB) by running:
+The model (~150 MB) is downloaded automatically the first time voice recognition is triggered. To pre-download it before the bot starts (recommended, avoids a first-use delay):
 
 ```bash
 node scripts/download-model.js
@@ -430,38 +430,31 @@ cd C:\AMPDatastore\Instances\<InstanceName>\node-server\app
 ..\node\node.exe scripts/download-model.js
 ```
 
-This downloads and extracts the model to `data/vosk-model-small-en-us-0.15/` inside your data directory.  The download is a one-time operation; after that the bot runs entirely offline for voice input.
+The model is cached to `data/transformers-cache/` inside your data directory. After the one-time download the bot runs entirely offline for voice input.
 
-**Prerequisites for extraction:**
-- Linux / macOS: `unzip` must be installed (`sudo apt-get install unzip` or `brew install unzip`).
-- Windows: PowerShell is used automatically — no extra tools needed.
+### Voice Recognition Features
 
-If the model directory is not present when the bot starts, voice recognition is silently disabled; text commands continue to work normally.
-
-### Vosk Improvements
-
-The following improvements have been implemented to enhance voice recognition accuracy (all free, no external APIs):
-
-- **Word-level confidence scoring** — Each recognised word includes a confidence score. The bot calculates an average confidence for each utterance and only acts on commands that meet a **45% threshold**. Low-confidence transcripts (background noise, music bleed-through) are logged but ignored.
+The following features are implemented to make voice recognition accurate and easy to use:
 
 - **Speaker diarisation** — Audio is received and processed per-user. Discord's voice receiver provides individual audio streams for each speaker, so commands are always attributed to the correct user even when multiple people are talking.
 
 - **Wake word detection** — "Hey Tiffany" is recognised as a wake word. After detection, the next sentence (within 10 seconds) is treated as a command without needing the "Tiffany" prefix. This reduces false positives by only processing speech that was intentionally directed at the bot.
 
+- **Minimum duration filter** — Audio shorter than 0.1 seconds is discarded before being sent to the model, avoiding false triggers from brief sounds or noise.
+
 **Possible future improvements (not yet implemented):**
 
-- **Larger model** — Replace `vosk-model-small-en-us-0.15` (45 MB) with `vosk-model-en-us-0.22` (1.8 GB) for significantly better accuracy at the cost of more memory.
-- **Custom grammar** — Vosk supports restricting recognition to a custom word list for command-only recognition, which could reduce false positives further.
-- **Whisper.cpp** — OpenAI's Whisper model via `whisper.cpp` provides higher accuracy and runs locally, but requires more CPU/memory.
+- **Larger model** — Replace `whisper-small.en` (~150 MB) with `whisper-medium.en` or `whisper-large` for higher accuracy at the cost of more memory and slower inference.
+- **Custom vocabulary** — Post-process transcripts against a command word list to reduce hallucinations on non-command speech.
 
 ---
 
 ## Known Limitations
 
-- **Voice recognition (audio receive) degraded with DAVE E2EE:** `@discordjs/voice` 0.19.0 supports Discord's mandatory DAVE (end-to-end encryption) protocol for voice connections, but audio **receive** (listening to users) is currently broken upstream ([discordjs/discord.js#11419](https://github.com/discordjs/discord.js/issues/11419)). This means Vosk-based speech recognition may not work until the upstream bug is fixed. Audio **sending** (music playback, TTS) works correctly. Text commands are fully unaffected.
+- **Voice recognition (audio receive) degraded with DAVE E2EE:** `@discordjs/voice` 0.19.0 supports Discord's mandatory DAVE (end-to-end encryption) protocol for voice connections, but audio **receive** (listening to users) is currently broken upstream ([discordjs/discord.js#11419](https://github.com/discordjs/discord.js/issues/11419)). This means Whisper-based speech recognition may not work until the upstream bug is fixed. Audio **sending** (music playback, TTS) works correctly. Text commands are fully unaffected.
 - **Node.js 22.12.0+ required:** `@discordjs/voice` 0.19.0 and `@snazzah/davey` require Node.js >= 22.12.0 for modern JavaScript features and native crypto support. If running under AMP, set the Node.js Release Stream to `22 - LTS` or newer.
 - **`@snazzah/davey` is required for voice connections:** Discord now enforces DAVE E2EE on most voice channels. Without `@snazzah/davey`, the DAVE handshake fails and the bot cannot connect to voice. The `generateDependencyReport()` output at startup confirms whether davey is detected.
-- **Voice recognition** requires a one-time download of the Vosk model (`node scripts/download-model.js`). After that the bot runs entirely offline with no external API dependencies.
+- **Voice recognition** uses Whisper via `@xenova/transformers`. The model (~150 MB) is downloaded automatically on first use and cached in `data/transformers-cache/`. Run `node scripts/download-model.js` to pre-download it. After the one-time download the bot runs entirely offline with no external API dependencies.
 - **yt-dlp** must be installed on the host for YouTube streaming. The bot falls back to `play-dl` if yt-dlp is absent, but play-dl may fail for YouTube URLs due to YouTube API changes. Keep yt-dlp up to date with `pip3 install --upgrade yt-dlp` or `yt-dlp -U`.
 - **play-dl** is used for non-YouTube sources (SoundCloud, Spotify links, etc.) and as a fallback when yt-dlp is unavailable.
 - **Volume control** only applies to the currently playing audio resource and resets when the song changes. Persistent volume is maintained in the bot's in-memory guild state and restored for each new song.
