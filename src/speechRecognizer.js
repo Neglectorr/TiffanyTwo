@@ -1,20 +1,20 @@
 'use strict';
 
 /**
- * Offline speech recognition powered by Vosk.
+ * Offline speech recognition powered by OpenAI Whisper via @xenova/transformers.
  *
- * Replaces `discord-speech-recognition` (which relayed audio to Google's Web
- * Speech API) with a fully local pipeline:
+ * Replaces the Vosk-based pipeline with a pure JavaScript/WASM implementation
+ * that requires no native compilation and works on Node.js 22+:
  *
  *   Discord voice receiver (Opus) → prism-media Opus decoder (48 kHz stereo PCM)
  *     → simple 3:1 decimation + channel-average (→ 16 kHz mono PCM)
- *       → Vosk offline STT → emit 'speech' event
+ *       → Float32 normalisation → Whisper STT → emit 'speech' event
  *
- * No external service, no API key, no ongoing cost.
+ * The model is downloaded automatically on first use (~150 MB, one-time).
+ * No native compilation, no external API, no ongoing cost.
  */
 
 const EventEmitter = require('events');
-const fs = require('fs');
 const path = require('path');
 const { EndBehaviorType } = require('@discordjs/voice');
 const logger = require('./logger');
@@ -22,8 +22,8 @@ const config = require('./config');
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-/** Sample rate expected by the Vosk small-en model */
-const VOSK_SAMPLE_RATE = 16000;
+/** Sample rate expected by Whisper */
+const WHISPER_SAMPLE_RATE = 16000;
 
 /** Discord sends 48 kHz stereo Opus audio */
 const DISCORD_SAMPLE_RATE = 48000;
@@ -31,61 +31,38 @@ const DISCORD_CHANNELS = 2;
 const DISCORD_FRAME_SIZE = 960; // 20 ms at 48 kHz
 
 /** Decimation factor: 48000 / 16000 = 3 */
-const DECIMATE = DISCORD_SAMPLE_RATE / VOSK_SAMPLE_RATE;
+const DECIMATE = DISCORD_SAMPLE_RATE / WHISPER_SAMPLE_RATE;
 
 /** Minimum PCM bytes before attempting recognition (avoids spurious hits on < 0.1 s of audio) */
 const MIN_PCM_BYTES = DISCORD_SAMPLE_RATE * DISCORD_CHANNELS * 2 * 0.1; // 0.1 s × 48000 Hz × 2 ch × 2 bytes
 
-/** Minimum average confidence score (0.0–1.0) for a voice command to be acted upon */
-const CONFIDENCE_THRESHOLD = 0.45;
+// ─── Whisper singleton ───────────────────────────────────────────────────────
 
-/** Path where the Vosk model should be installed */
-const MODEL_PATH = path.join(config.dataDir, 'vosk-model-small-en-us-0.15');
+/** Cached pipeline Promise (null = not started or last attempt failed) */
+let _transcriberPromise = null;
 
-// ─── Lazy-loaded singletons ──────────────────────────────────────────────────
+/**
+ * Lazily initialise (and cache) the Whisper ASR pipeline.
+ * Returns a Promise that resolves to the pipeline function, or null on failure.
+ */
+function getTranscriber() {
+  if (_transcriberPromise) return _transcriberPromise;
 
-let voskLib = null;
-let voskUnavailable = false;
-let voskModel = null;
-let voskModelMissing = false;
+  const { pipeline, env } = require('@xenova/transformers');
+  env.cacheDir = path.join(config.dataDir, 'transformers-cache');
 
-function getVosk() {
-  if (voskLib) return voskLib;
-  if (voskUnavailable) return null;
-  try {
-    voskLib = require('vosk');
-    voskLib.setLogLevel(-1);
-    return voskLib;
-  } catch (err) {
-    voskUnavailable = true;
-    logger.warn(`Vosk library unavailable – voice input disabled: ${err.message}`);
-    return null;
-  }
-}
+  _transcriberPromise = pipeline('automatic-speech-recognition', 'Xenova/whisper-small.en')
+    .then((t) => {
+      logger.info('Whisper offline speech recognition model loaded successfully.');
+      return t;
+    })
+    .catch((err) => {
+      logger.warn(`Whisper model unavailable – voice input disabled: ${err.message}`);
+      _transcriberPromise = null; // allow a retry on next speech event
+      return null;
+    });
 
-function getModel() {
-  if (voskModel) return voskModel;
-  const vosk = getVosk();
-  if (!vosk) return null;
-  if (!fs.existsSync(MODEL_PATH)) {
-    if (!voskModelMissing) {
-      voskModelMissing = true;
-      logger.warn(
-        `Vosk model not found at ${MODEL_PATH}. ` +
-          'Run "node scripts/download-model.js" to install it. ' +
-          'Voice recognition is disabled until the model is present.'
-      );
-    }
-    return null;
-  }
-  try {
-    voskModel = new vosk.Model(MODEL_PATH);
-    logger.info('Vosk offline speech recognition model loaded successfully.');
-    return voskModel;
-  } catch (err) {
-    logger.warn(`Failed to load Vosk model: ${err.message}`);
-    return null;
-  }
+  return _transcriberPromise;
 }
 
 // ─── PCM conversion ──────────────────────────────────────────────────────────
@@ -116,6 +93,22 @@ function convertTo16kMono(src) {
   return out;
 }
 
+/**
+ * Normalise 16-bit integer PCM samples to floating-point in the range [-1.0, 1.0].
+ * Whisper expects Float32 audio input.
+ *
+ * @param {Buffer} pcmBuffer  16 kHz mono PCM (Int16 LE)
+ * @returns {Float32Array}
+ */
+function pcm16kToFloat32(pcmBuffer) {
+  const samples = pcmBuffer.length / 2;
+  const float32 = new Float32Array(samples);
+  for (let i = 0; i < samples; i++) {
+    float32[i] = pcmBuffer.readInt16LE(i * 2) / 32768.0;
+  }
+  return float32;
+}
+
 // ─── SpeechRecognizer ────────────────────────────────────────────────────────
 
 /**
@@ -135,6 +128,10 @@ class SpeechRecognizer extends EventEmitter {
     this._client = discordClient;
     /** @type {Set<string>} guildIds that already have an active receiver */
     this._active = new Set();
+
+    // Begin loading the model in the background immediately so it is ready
+    // before the first user speaks.
+    getTranscriber().catch(() => {});
   }
 
   /**
@@ -218,7 +215,7 @@ class SpeechRecognizer extends EventEmitter {
 
       decoder.on('data', (chunk) => chunks.push(chunk));
 
-      decoder.on('end', () => {
+      decoder.on('end', async () => {
         activeUsers.delete(userId);
         const rawPcm = Buffer.concat(chunks);
         if (rawPcm.length < MIN_PCM_BYTES) {
@@ -226,41 +223,24 @@ class SpeechRecognizer extends EventEmitter {
           return;
         }
 
-        const vosk = getVosk();
-        const model = getModel();
-        if (!vosk || !model) return;
+        const transcriber = await getTranscriber();
+        if (!transcriber) return;
 
-        // Convert 48 kHz stereo → 16 kHz mono
+        // Convert 48 kHz stereo → 16 kHz mono → Float32
         const pcm16k = convertTo16kMono(rawPcm);
+        const float32Audio = pcm16kToFloat32(pcm16k);
 
-        let rec;
         try {
-          rec = new vosk.Recognizer({ model, sampleRate: VOSK_SAMPLE_RATE });
+          const result = await transcriber(float32Audio, { sampling_rate: WHISPER_SAMPLE_RATE });
+          const text = (result.text ?? '').trim();
 
-          // Enable word-level confidence scores for threshold filtering
-          rec.setWords(true);
-
-          rec.acceptWaveform(pcm16k);
-          const voskResult = rec.finalResult();
-          const text = (voskResult.text ?? '').trim();
-
-          // Calculate average confidence from word-level results
-          let confidence = 1.0;
-          if (voskResult.result && voskResult.result.length > 0) {
-            const totalConf = voskResult.result.reduce((sum, w) => sum + (w.conf ?? 0), 0);
-            confidence = totalConf / voskResult.result.length;
-          }
-
-          // Always log the raw recognition result so every utterance is visible
-          // in the console regardless of confidence level – useful for tuning
-          // CONFIDENCE_THRESHOLD and verifying that audio receive is working.
           if (text) {
-            logger.info(`[STT] ${user?.username}: "${text}" – conf ${(confidence * 100).toFixed(0)}%`);
+            logger.info(`[STT] ${user?.username}: "${text}"`);
           } else {
             logger.info(`[STT] ${user?.username}: (no speech recognized)`);
           }
 
-          if (text && confidence >= CONFIDENCE_THRESHOLD) {
+          if (text) {
             // Resolve the channel: prefer the voice channel the speaker is in,
             // fall back to the first text channel in the guild.
             const channel =
@@ -268,16 +248,10 @@ class SpeechRecognizer extends EventEmitter {
                 (ch) => ch.isVoiceBased?.() && ch.members?.has(userId)
               ) ?? guild.channels.cache.find((ch) => ch.isTextBased?.());
 
-            this.emit('speech', { content: text, author: user, channel, userId, confidence });
-          } else if (text && confidence < CONFIDENCE_THRESHOLD) {
-            logger.info(
-              `Vosk transcript below confidence threshold (${(confidence * 100).toFixed(0)}% < ${(CONFIDENCE_THRESHOLD * 100).toFixed(0)}%): "${text}"`
-            );
+            this.emit('speech', { content: text, author: user, channel, userId });
           }
         } catch (err) {
-          logger.warn(`Vosk recognition error: ${err.message}`);
-        } finally {
-          if (rec) rec.free();
+          logger.warn(`Whisper recognition error: ${err.message}`);
         }
       });
 
