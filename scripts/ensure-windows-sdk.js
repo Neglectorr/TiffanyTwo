@@ -2,8 +2,8 @@
 'use strict';
 
 /**
- * Ensures the Windows 10/11 SDK is installed before native addons (ffi-napi,
- * vosk, etc.) are compiled by node-gyp.
+ * Ensures the Windows 10/11 SDK is installed before optional native addons
+ * (ffi-napi, vosk, etc.) are compiled by node-gyp.
  *
  * Run automatically via the npm "preinstall" hook – on non-Windows platforms
  * this script exits immediately without doing anything.
@@ -197,7 +197,7 @@ if (hasWindowsSDK()) {
 
 console.log('');
 console.log('⚠️  Windows SDK not found.');
-console.log('    node-gyp requires the Windows SDK to compile native addons (ffi-napi, vosk…).');
+console.log('    node-gyp requires the Windows SDK to compile optional native addons (ffi-napi, vosk…).');
 console.log('    Attempting automatic installation…');
 console.log('');
 
@@ -227,25 +227,28 @@ for (const [name, fn] of strategies) {
   console.log('');
 }
 
-// All strategies failed
-console.error('');
-console.error('❌  Could not automatically install the Windows SDK.');
-console.error('');
-console.error('Please install it manually using ONE of the following methods:');
-console.error('');
-console.error('  Option A – Visual Studio Installer (recommended):');
-console.error('    1. Open "Visual Studio Installer"');
-console.error('    2. Click "Modify" on your Build Tools installation');
-console.error('    3. Check "Desktop development with C++" (includes Windows SDK)');
-console.error('    4. Click "Modify" and wait for the installation to complete');
-console.error('    5. Re-run: npm install');
-console.error('');
-console.error('  Option B – winget (Windows Package Manager):');
-console.error('    winget install Microsoft.WindowsSDK.10.0.20348');
-console.error('    npm install');
-console.error('');
-console.error('  Option C – Chocolatey:');
-console.error('    choco install windows-sdk-10-version-2004-all -y');
-console.error('    npm install');
-console.error('');
-process.exit(1);
+// All strategies failed – warn but allow npm install to continue.
+// vosk (which needs the SDK) is listed in optionalDependencies, so npm will
+// warn on its native-addon build failure rather than aborting the install.
+console.warn('');
+console.warn('⚠️  Could not automatically install the Windows SDK.');
+console.warn('   Voice recognition (vosk) will be unavailable until it is installed.');
+console.warn('');
+console.warn('To enable voice recognition, install the SDK manually using ONE of:');
+console.warn('');
+console.warn('  Option A – Visual Studio Installer (recommended):');
+console.warn('    1. Open "Visual Studio Installer"');
+console.warn('    2. Click "Modify" on your Build Tools installation');
+console.warn('    3. Check "Desktop development with C++" (includes Windows SDK)');
+console.warn('    4. Click "Modify" and wait for the installation to complete');
+console.warn('    5. Re-run: npm install');
+console.warn('');
+console.warn('  Option B – winget (Windows Package Manager):');
+console.warn('    winget install Microsoft.WindowsSDK.10.0.20348');
+console.warn('    npm install');
+console.warn('');
+console.warn('  Option C – Chocolatey:');
+console.warn('    choco install windows-sdk-10-version-2004-all -y');
+console.warn('    npm install');
+console.warn('');
+process.exit(0);

@@ -19,7 +19,9 @@
     "libsodium-wrappers": "^0.7.13",
     "opusscript": "^0.0.8",
     "play-dl": "^1.9.7",
-    "say": "^0.16.0",
+    "say": "^0.16.0"
+  },
+  "optionalDependencies": {
     "vosk": "^0.3.39"
   },
   "overrides": {
