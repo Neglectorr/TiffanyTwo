@@ -18,19 +18,21 @@ const path = require('path');
 
 const { pipeline, env } = require('@xenova/transformers');
 
+const WHISPER_MODEL = 'Xenova/whisper-small.en';
+
 const DATA_DIR = path.resolve(
   process.env.DATA_DIR || path.join(__dirname, '..', 'data')
 );
 
 env.cacheDir = path.join(DATA_DIR, 'transformers-cache');
 
-console.log('Downloading Whisper speech recognition model (Xenova/whisper-small.en)…');
+console.log(`Downloading Whisper speech recognition model (${WHISPER_MODEL})…`);
 console.log(`Cache directory: ${env.cacheDir}`);
 console.log('This is a one-time ~150 MB download.\n');
 
 (async () => {
   try {
-    await pipeline('automatic-speech-recognition', 'Xenova/whisper-small.en');
+    await pipeline('automatic-speech-recognition', WHISPER_MODEL);
     console.log('\n✅  Whisper model downloaded and cached successfully.');
     console.log('    Voice recognition is now available. Start the bot normally.');
     process.exit(0);

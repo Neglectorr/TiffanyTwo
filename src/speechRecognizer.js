@@ -17,10 +17,14 @@
 const EventEmitter = require('events');
 const path = require('path');
 const { EndBehaviorType } = require('@discordjs/voice');
+const { pipeline, env } = require('@xenova/transformers');
 const logger = require('./logger');
 const config = require('./config');
 
 // ─── Constants ──────────────────────────────────────────────────────────────
+
+/** Whisper model to use for speech recognition */
+const WHISPER_MODEL = 'Xenova/whisper-small.en';
 
 /** Sample rate expected by Whisper */
 const WHISPER_SAMPLE_RATE = 16000;
@@ -48,10 +52,9 @@ let _transcriberPromise = null;
 function getTranscriber() {
   if (_transcriberPromise) return _transcriberPromise;
 
-  const { pipeline, env } = require('@xenova/transformers');
   env.cacheDir = path.join(config.dataDir, 'transformers-cache');
 
-  _transcriberPromise = pipeline('automatic-speech-recognition', 'Xenova/whisper-small.en')
+  _transcriberPromise = pipeline('automatic-speech-recognition', WHISPER_MODEL)
     .then((t) => {
       logger.info('Whisper offline speech recognition model loaded successfully.');
       return t;
