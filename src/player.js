@@ -433,7 +433,7 @@ async function playCurrentSong(guildId) {
         }
         const { filePath, streamType, cleanup } = await ytdlp.downloadToFile(song.url, song.id);
         state.cleanupCurrentSong = cleanup;
-        stream = { stream: fs.createReadStream(filePath), type: streamType };
+        stream = { stream: fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 }), type: streamType };
         logger.info(`[player] Playing from local cache via yt-dlp: ${filePath}`);
       } catch (ytdlpErr) {
         logger.warn(`[player] yt-dlp download failed, falling back to yt-dlp stream: ${ytdlpErr.message}`);
@@ -634,27 +634,40 @@ async function speak(guildId, text) {
       ? state.moodQueue[state.moodIndex]
       : playlist.current;
 
+    // Pause the main player so the song position is preserved
+    if (wasPlaying) {
+      state.player.pause();
+    }
+
+    // Use a separate temporary player for TTS so the main player's stream is
+    // kept intact and can be unpaused (resumed from the same position) after.
+    const ttsPlayer = createAudioPlayer({
+      behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
+    });
+    state.connection.subscribe(ttsPlayer);
+
     // Signal to the Idle handler that this is TTS – don't auto-advance
     state.ttsActive = true;
-    state.player.play(resource);
+    ttsPlayer.play(resource);
 
     const cleanup = () => {
       state.ttsActive = false;
       tts.cleanupSpeech(ttsFile);
       ttsFile = null;
+      // Stop and restore subscription to the main player
+      ttsPlayer.stop(true);
+      state.connection.subscribe(state.player);
       if (!wasPlaying || !currentSong) return;
       // Only resume if the same song is still current (not skipped while TTS played)
       const stillCurrent = state.moodMode
         ? state.moodQueue[state.moodIndex]?.id === currentSong.id
         : playlist.current?.id === currentSong.id;
       if (stillCurrent) {
-        playCurrentSong(guildId).catch((err) =>
-          logger.error(`TTS resume failed for guild ${guildId}`, err)
-        );
+        state.player.unpause();
       }
     };
 
-    state.player.once(AudioPlayerStatus.Idle, cleanup);
+    ttsPlayer.once(AudioPlayerStatus.Idle, cleanup);
   } catch (err) {
     if (state) state.ttsActive = false;
     logger.error(`TTS generation failed for guild ${guildId}`, err);
@@ -718,23 +731,36 @@ async function playBeep(guildId) {
     ? state.moodQueue[state.moodIndex]
     : playlist.current;
 
+  // Pause the main player so the song position is preserved while the beep plays
+  if (wasPlaying) {
+    state.player.pause();
+  }
+
+  // Use a separate temporary player for the beep so the main player's stream
+  // stays intact and can be unpaused (resumed from the same position) after.
+  const beepPlayer = createAudioPlayer({
+    behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
+  });
+  state.connection.subscribe(beepPlayer);
+
   state.ttsActive = true;
-  state.player.play(resource);
+  beepPlayer.play(resource);
 
   const cleanup = () => {
     state.ttsActive = false;
+    // Stop and restore subscription to the main player
+    beepPlayer.stop(true);
+    state.connection.subscribe(state.player);
     if (!wasPlaying || !currentSong) return;
     const stillCurrent = state.moodMode
       ? state.moodQueue[state.moodIndex]?.id === currentSong.id
       : playlist.current?.id === currentSong.id;
     if (stillCurrent) {
-      playCurrentSong(guildId).catch((err) =>
-        logger.error(`Wake-word beep resume failed for guild ${guildId}`, err)
-      );
+      state.player.unpause();
     }
   };
 
-  state.player.once(AudioPlayerStatus.Idle, cleanup);
+  beepPlayer.once(AudioPlayerStatus.Idle, cleanup);
 }
 
 // ─── Mood mode ─────────────────────────────────────────────────────────────
