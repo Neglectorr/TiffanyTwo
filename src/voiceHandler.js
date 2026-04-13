@@ -134,4 +134,23 @@ async function dispatchVoiceCommand(message, guildId, body) {
   }
 }
 
-module.exports = { handleSpeech, extractAfterWakeWord };
+/**
+ * Return true if the given user is currently within a wake-word window
+ * (i.e. they said "Hey Tiffany" recently and the window has not expired).
+ *
+ * Used by speechRecognizer to skip full transcription when the user is not
+ * in an active wake-word window and the utterance is unlikely to be a command.
+ *
+ * @param {string} userId
+ * @returns {boolean}
+ */
+function isInWakeWordWindow(userId) {
+  if (!userId || !wakeWordTimestamps.has(userId)) return false;
+  const lastWake = wakeWordTimestamps.get(userId);
+  if (Date.now() - lastWake <= WAKE_WORD_WINDOW) return true;
+  // Window expired — clean up
+  wakeWordTimestamps.delete(userId);
+  return false;
+}
+
+module.exports = { handleSpeech, extractAfterWakeWord, isInWakeWordWindow };
