@@ -104,14 +104,7 @@ async function handleSpeech(message, transcript) {
     wakeWordTimestamps.delete(userId);
   }
 
-  // ── Standard voice command dispatch ────────────────────────────────────────
-  // Strip optional prefix from voice transcript
-  let body = lower;
-  if (lower.startsWith(prefixLower)) {
-    body = lower.slice(prefixLower.length).trim();
-  }
-
-  await dispatchVoiceCommand(message, guildId, body);
+  // No wake word detected and not within the wake word window — ignore.
 }
 
 /**
