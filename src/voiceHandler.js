@@ -45,7 +45,7 @@ function extractAfterWakeWord(text) {
 const wakeWordTimestamps = new Map();
 
 /** Window in ms during which commands after a wake word don't need the prefix */
-const WAKE_WORD_WINDOW = 10_000; // 10 seconds
+const WAKE_WORD_WINDOW = 5_000; // 5 seconds
 
 /**
  * Process a recognised speech string and dispatch it to the matching command.
@@ -104,14 +104,7 @@ async function handleSpeech(message, transcript) {
     wakeWordTimestamps.delete(userId);
   }
 
-  // ── Standard voice command dispatch ────────────────────────────────────────
-  // Strip optional prefix from voice transcript
-  let body = lower;
-  if (lower.startsWith(prefixLower)) {
-    body = lower.slice(prefixLower.length).trim();
-  }
-
-  await dispatchVoiceCommand(message, guildId, body);
+  // No wake word detected and not within the wake word window — ignore.
 }
 
 /**
