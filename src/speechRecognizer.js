@@ -20,6 +20,7 @@ const { EndBehaviorType } = require('@discordjs/voice');
 const { pipeline, env } = require('@xenova/transformers');
 const logger = require('./logger');
 const config = require('./config');
+const { extractAfterWakeWord, isInWakeWordWindow } = require('./voiceHandler');
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -39,6 +40,13 @@ const DECIMATE = DISCORD_SAMPLE_RATE / WHISPER_SAMPLE_RATE;
 
 /** Minimum PCM bytes before attempting recognition (avoids spurious hits on < 0.1 s of audio) */
 const MIN_PCM_BYTES = DISCORD_SAMPLE_RATE * DISCORD_CHANNELS * 2 * 0.1; // 0.1 s × 48000 Hz × 2 ch × 2 bytes
+
+/**
+ * Number of 16 kHz mono Float32 samples used for the cheap wake-word prefix
+ * check.  1.5 seconds covers ~2–3 spoken words, enough to detect "Hey Tiffany"
+ * without running Whisper over the entire utterance first.
+ */
+const WAKE_PREFIX_SAMPLES = Math.round(WHISPER_SAMPLE_RATE * 1.5); // 24 000 samples
 
 // ─── Whisper singleton ───────────────────────────────────────────────────────
 
@@ -234,6 +242,25 @@ class SpeechRecognizer extends EventEmitter {
         const float32Audio = pcm16kToFloat32(pcm16k);
 
         try {
+          // ── Efficiency: prefix-check ────────────────────────────────────────
+          // When the user is NOT already in a wake-word window, run Whisper on
+          // only the first 1.5 seconds of audio to detect "Hey Tiffany" cheaply.
+          // If the prefix doesn't match the wake word, skip the full transcription
+          // entirely — the utterance cannot be a command.
+          // Only bother if the audio is longer than the prefix window; otherwise
+          // the prefix and full audio are identical, so we skip the extra pass.
+          if (!isInWakeWordWindow(userId) && float32Audio.length > WAKE_PREFIX_SAMPLES) {
+            const prefixAudio = float32Audio.slice(0, WAKE_PREFIX_SAMPLES);
+            const prefixResult = await transcriber(prefixAudio, { sampling_rate: WHISPER_SAMPLE_RATE });
+            const prefixText = (prefixResult.text ?? '').trim().toLowerCase();
+
+            if (extractAfterWakeWord(prefixText) === null) {
+              logger.info(`[STT] ${user?.username}: prefix "${prefixText}" — no wake word, skipping full transcription.`);
+              return;
+            }
+          }
+
+          // ── Full transcription ──────────────────────────────────────────────
           const result = await transcriber(float32Audio, { sampling_rate: WHISPER_SAMPLE_RATE });
           const text = (result.text ?? '').trim();
 
