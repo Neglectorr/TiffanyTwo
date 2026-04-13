@@ -45,7 +45,7 @@ function extractAfterWakeWord(text) {
 const wakeWordTimestamps = new Map();
 
 /** Window in ms during which commands after a wake word don't need the prefix */
-const WAKE_WORD_WINDOW = 10_000; // 10 seconds
+const WAKE_WORD_WINDOW = 5_000; // 5 seconds
 
 /**
  * Process a recognised speech string and dispatch it to the matching command.
